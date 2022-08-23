@@ -1,3 +1,5 @@
+from re import I
+from xml.dom import minidom
 import cv2
 import numpy as np
 import os
@@ -6,23 +8,40 @@ import pytesseract
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import requests
+import json
 
 #Input and OPENCV Stuff
 INPUT_DIR = "./inputNotes"
 UP_YELLOW = np.array([48, 255, 255])
-LOW_YELLOW = np.array([20, 100, 100])
+LOW_YELLOW = np.array([20, 70, 70])
 
 #Notion stuff
 #Detect contours with opensv2 I think
-DBID= "84606ef9e44449899f1ab8c68571648a"
+DBID= "72f8d794702d4de4bf6e19c84c35baae"
 #!!!Set notion environment Vairable!!!
 NOTIONKEY = os.environ.get('NOTION')
+
+def displayContours(img, contours):
+    res = cv2.drawContours(img, contours, -1, (0,255,0),3)
+    cv2.imshow('Contours', res)
+    print("Press 0 to continue:")
+    cv2.waitKey(0)
+
+def getMinY(contour):
+    print(contour)
+    return min(contour, key=lambda x: x[0][1])[0][1]
 
 def main():
     #Filter image and get main contours
     imgFileList = os.listdir(INPUT_DIR)
+    if len(imgFileList) == 0:
+        print("No imgs to process!")
+        return 
     for i in imgFileList:
+        print(i)
         img = cv2.imread(INPUT_DIR + '/' + i)
+        imgMH = len(img)
+        imgMW = len(img[0]) 
         title = i[0:-4]
 
         #We use color for markers!!!
@@ -32,29 +51,40 @@ def main():
         resGrey = cv2.cvtColor(res, cv2.COLOR_BGR2GRAY)
         contours,_ =  cv2.findContours(resGrey, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
         #Filter out unintended marks by low contour complexity!
-        left,mid,right = []
-        count = 0
-        for cont in contours:
-            #First check if contour is intended! Should have high complexity
-            if len(cont) > 10:
-                match count%3:
-                    case 0:
-                        left.append(cont)
-                        break
-                    case 1:
-                        mid.append(cont)
-                        break
-                    case 2:
-                        right.append(cont)
-                        break
-                count += 1
+        contours = list(filter(lambda x: len(x) > 10, contours))
+        contours.sort(key=getMinY)
 
-    #Loop through, check proper left and double right
-    #If next 2 right are below the next left, then fail and move on to next left!
-    #If success make the two crop
-
-    #Now make page and upload to notion
-    #With Q: A: crops
+        #With Q: A: crops
+        for i in range(0,len(contours),3):
+            leftX = min(contours[i], key=lambda x : x[0][0])[0][0]
+            leftY = min(contours[i], key=lambda x : x[0][1])[0][1]
+            mid = contours[i+1][0][0]
+            rightX = max(contours[i+2], key=lambda x : x[0][0])[0][0]
+            rightY = max(contours[i+2], key=lambda x : x[0][1])[0][1]
+            #Add padding if possible:
+            leftY = max(leftY-5, 0)
+            leftX = min(leftX-5,0)
+            rightY = min(rightY+5, imgMH)
+            rightX = max(rightX+5, imgMW)
+            print("IMG")
+            print(img.shape)
+            print("Y")
+            print(leftY)
+            print( (min(mid[1]+5,imgMH)))
+            print("X")
+            print(leftX)
+            print(rightX)
+            qCard = img[ leftY:(min(mid[1]+5,imgMH)), leftX:rightX]
+            aCard = img[ max(mid[1]-5,0):rightY, leftX:rightX ]
+    
+            tbTImg = np.vstack([qCard,aCard])
+            print("Q")
+            print(qCard.shape)
+            print("A")
+            print(aCard.shape)
+            cv2.imshow("Q & A", tbTImg)
+            print("Press 0 to continue:")
+            cv2.waitKey(0)
 
 
 def contours():
@@ -84,8 +114,8 @@ def contours():
     print(len(contoursSimple))
     print(type(contoursSimple))
     contoursSimple =  map((lambda x : x.reshape(-1,2) ), contoursSimple)
+    contoursNone = list(filter(lambda x: len(x) > 10, contoursNone))
     contoursNone = map((lambda x : x.reshape(-1,2) if len(x) > 4 else [] ), contoursNone)
-
     im1 = result.copy()
     im2 = result.copy()
     for i in contoursSimple:
@@ -130,10 +160,64 @@ def getQA():
             rect = patches.Rectangle((left,bot),width, height, linewidth=2, edgecolor='r', facecolor='none')
             ax.add_patch(rect)
     plt.show()
+
 def notionTest():
     print("Notion test!")
+    apiURL = "https://api.notion.com/v1/pages"
+    header = {
+        "Notion-Version":"2022-06-28",
+        "Authorization": "Bearer "+NOTIONKEY,
+    }
+    msg = {
+        "parent":{
+            "database_id":DBID,
+        },
+        "icon": {
+  	        "emoji": "🥬"
+        },
+        "properties":{
+            "Name":{
+                "title":[
+                    {
+                        "text":{
+                            "content":"Test Adding Page Title"
+                        }
+                    }
+                ]
+            },
+            "Tag":{
+                    "select":{
+                        "name":"IPAD"
+                    }
+                }
+        },
+        "children":[
+            {
+                "object":"block",
+                "type":"heading_2",
+                "heading_2":{
+                    "rich_text":[{"type":"text", "text":{"content":"Ipad Text"}}]
+                }
+            },
+        ]
+    }
 
-#main()
+    apiURL = "https://api.notion.com/v1/databases/"+DBID
+    header = {
+        "Notion-Version":"2022-06-28",
+        "Authorization": "Bearer "+NOTIONKEY,
+    }
+    resp = requests.get(apiURL, headers=header)
+    print(resp)
+    print(resp.content)
+    respJson = json.loads(resp.content.decode('utf8'))
+    print(respJson["properties"])
+    for key in respJson["properties"].keys():
+        print("Key: " + key)
+        print(respJson["properties"][key])
+
+
+main()
 #getQA()
 #contours()
-notionTest()
+#notionTest()
