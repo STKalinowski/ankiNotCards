@@ -1,5 +1,3 @@
-from re import I
-from xml.dom import minidom
 import cv2
 import numpy as np
 import os
@@ -9,7 +7,11 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import requests
 import json
+import genanki
+import random
 
+
+#HARD CODED STUFF!!!!
 #Input and OPENCV Stuff
 INPUT_DIR = "./inputNotes"
 UP_YELLOW = np.array([48, 255, 255])
@@ -21,25 +23,57 @@ DBID= "72f8d794702d4de4bf6e19c84c35baae"
 #!!!Set notion environment Vairable!!!
 NOTIONKEY = os.environ.get('NOTION')
 
+#Anki Stuff
+#To add sounds or images, set the media_files attribute on your packages
+#DECK_NUM = 2077888110
+DECK_NUM = 1661450634135
+MODEL_NUM = 2999898880
+
 def displayContours(img, contours):
     res = cv2.drawContours(img, contours, -1, (0,255,0),3)
     cv2.imshow('Contours', res)
     print("Press 0 to continue:")
     cv2.waitKey(0)
 
-def getMinY(contour):
-    print(contour)
-    return min(contour, key=lambda x: x[0][1])[0][1]
+def getAvgY(contour):
+    ySum = 0
+    for i in contour:
+        ySum += i[0][1]
+    
+    return int(ySum/len(contour)) 
 
 def main():
+    print(DECK_NUM)
     #Filter image and get main contours
     imgFileList = os.listdir(INPUT_DIR)
     if len(imgFileList) == 0:
         print("No imgs to process!")
         return 
+    
+    #Genanki setup
+    myDeck = genanki.Deck(DECK_NUM, "Test")
+    myModel = genanki.Model(
+        MODEL_NUM,
+        'Model With Link',
+        fields=[
+            {'name': 'Question'},
+            {'name': 'Answer'},
+            {'name': 'Link'}
+        ],
+        templates=  [
+            {
+                'name': 'Card 1',
+                'qfmt': '{{Question}}',
+                'afmt': '{{FrontSide}} <hr id="answer"> {{Answer}} <hr id="Link"> {{Link}}'
+            },
+        ])
+    
+    #Go through 
     for i in imgFileList:
-        print(i)
+        if i[0] == '.':
+            continue
         img = cv2.imread(INPUT_DIR + '/' + i)
+        
         imgMH = len(img)
         imgMW = len(img[0]) 
         title = i[0:-4]
@@ -50,10 +84,15 @@ def main():
         res = cv2.bitwise_and(img, img, mask=mask)
         resGrey = cv2.cvtColor(res, cv2.COLOR_BGR2GRAY)
         contours,_ =  cv2.findContours(resGrey, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+
         #Filter out unintended marks by low contour complexity!
         contours = list(filter(lambda x: len(x) > 10, contours))
-        contours.sort(key=getMinY)
+        contoursAvgPair = list(map(lambda x: (getAvgY(x),x), contours))
+        contoursAvgPair.sort(key=lambda x: x[0])
+        contours = list(map(lambda x: x[1], contoursAvgPair))
 
+        pageLink = "https://www.youtube.com"
+        imgList = []
         #With Q: A: crops
         for i in range(0,len(contours),3):
             leftX = min(contours[i], key=lambda x : x[0][0])[0][0]
@@ -66,25 +105,23 @@ def main():
             leftX = min(leftX-5,0)
             rightY = min(rightY+5, imgMH)
             rightX = max(rightX+5, imgMW)
-            print("IMG")
-            print(img.shape)
-            print("Y")
-            print(leftY)
-            print( (min(mid[1]+5,imgMH)))
-            print("X")
-            print(leftX)
-            print(rightX)
-            qCard = img[ leftY:(min(mid[1]+5,imgMH)), leftX:rightX]
-            aCard = img[ max(mid[1]-5,0):rightY, leftX:rightX ]
-    
-            tbTImg = np.vstack([qCard,aCard])
-            print("Q")
-            print(qCard.shape)
-            print("A")
-            print(aCard.shape)
-            cv2.imshow("Q & A", tbTImg)
-            print("Press 0 to continue:")
-            cv2.waitKey(0)
+            qCard = img[ leftY:(min(mid[1]+6,imgMH)), leftX:rightX]
+            aCard = img[ max(mid[1]-3,0):rightY, leftX:rightX ]
+            qCardNum = str(random.randrange(1<<30, 1<<31))+".jpg"
+            aCardNum = str(random.randrange(1<<30, 1<<31))+".jpg"
+            cv2.imwrite("./cardImgs/"+qCardNum, qCard)
+            cv2.imwrite("./cardImgs/"+aCardNum, aCard)
+            imgList.append("./cardImgs/"+qCardNum)
+            imgList.append("./cardImgs/"+aCardNum)
+            #Now we add 
+            #Make Note
+            #Add Note to model
+            #myNote = genanki.Note(myMode, ['<img src=''>', '',])
+            myNote = genanki.Note(myModel, fields=['<img src='+qCardNum+'>', '<img src='+aCardNum+'>', '<a href='+pageLink+'>Page Context Link</a>'])
+            myDeck.add_note(myNote)
+    myPackage = genanki.Package(myDeck)
+    myPackage.media_files = imgList
+    myPackage.write_to_file('./output.apkg')
 
 
 def contours():
@@ -161,6 +198,13 @@ def getQA():
             ax.add_patch(rect)
     plt.show()
 
+def displayRespJson(resp):
+    print(resp)
+    respJSON = json.loads(resp.content.decode('utf8'))
+    for key in respJSON.keys():
+        print("Key: " + key)
+        print(respJSON[key])
+
 def notionTest():
     print("Notion test!")
     apiURL = "https://api.notion.com/v1/pages"
@@ -172,9 +216,6 @@ def notionTest():
         "parent":{
             "database_id":DBID,
         },
-        "icon": {
-  	        "emoji": "🥬"
-        },
         "properties":{
             "Name":{
                 "title":[
@@ -185,8 +226,8 @@ def notionTest():
                     }
                 ]
             },
-            "Tag":{
-                    "select":{
+            "Tags":{
+                    "multi_select":{
                         "name":"IPAD"
                     }
                 }
@@ -201,7 +242,12 @@ def notionTest():
             },
         ]
     }
+    resp = requests.post(apiURL, headers=header, json=msg)
+    displayRespJson(resp)
 
+    if resp != None:
+        return
+    
     apiURL = "https://api.notion.com/v1/databases/"+DBID
     header = {
         "Notion-Version":"2022-06-28",
@@ -215,9 +261,7 @@ def notionTest():
     for key in respJson["properties"].keys():
         print("Key: " + key)
         print(respJson["properties"][key])
-
-
-main()
+#main()
 #getQA()
 #contours()
-#notionTest()
+notionTest()
