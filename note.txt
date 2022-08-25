@@ -1,0 +1,7 @@
+Ok:
+->Get cards with AQ AA markings. Capturing lines.
+->Upload paages to notes for link.
+->Create cards with Q,A,link
+
+Write article about automating Anki Cards for my ipad notes.
+WHy and what behind my decisions.
