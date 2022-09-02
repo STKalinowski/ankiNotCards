@@ -10,6 +10,9 @@ import json
 import genanki
 import random
 
+from rauth import OAuth2Service
+import webbrowser
+from imgurpython import ImgurClient
 
 #HARD CODED STUFF!!!!
 #Input and OPENCV Stuff
@@ -28,6 +31,10 @@ NOTIONKEY = os.environ.get('NOTION')
 #DECK_NUM = 2077888110
 DECK_NUM = 1661450634135
 MODEL_NUM = 2999898880
+
+#Imgur Stuff
+CLIENT_ID = os.environ.get("IMGUR_CI")
+CLIENT_SECRET = os.environ.get('IMGUR_CS')
 
 def displayContours(img, contours):
     res = cv2.drawContours(img, contours, -1, (0,255,0),3)
@@ -213,35 +220,32 @@ def notionTest():
         "Authorization": "Bearer "+NOTIONKEY,
     }
     msg = {
-        "parent":{
-            "database_id":DBID,
-        },
+        "parent":{ "database_id":DBID, },
         "properties":{
-            "Name":{
-                "title":[
-                    {
-                        "text":{
-                            "content":"Test Adding Page Title"
-                        }
-                    }
+            "Name":{ "title":[ 
+                { "text":{ "content":"Test Adding Page Title" } }
                 ]
             },
-            "Tags":{
-                    "multi_select":{
-                        "name":"IPAD"
-                    }
-                }
+            "Tags":{ 
+                "multi_select": [{"name": "IPAD"}]
+            },
         },
-        "children":[
-            {
+        "children":[ {
                 "object":"block",
                 "type":"heading_2",
-                "heading_2":{
-                    "rich_text":[{"type":"text", "text":{"content":"Ipad Text"}}]
-                }
+                "heading_2":{ "rich_text":[
+                    {"type":"text", 
+                    "text":{"content":"Ipad Text"}
+                    }
+                ]}
             },
+            { "type": "video",
+                "video": {"type":"external",
+                        "external":{"url":"https://i.imgur.com/a9Squjj.mp4"}}
+            }
         ]
     }
+    
     resp = requests.post(apiURL, headers=header, json=msg)
     displayRespJson(resp)
 
@@ -261,7 +265,29 @@ def notionTest():
     for key in respJson["properties"].keys():
         print("Key: " + key)
         print(respJson["properties"][key])
+
+def imgurTest():
+    print("Imgur Test")
+    #resp = requests.get("https://api.imgur.com/oauth2/authorize?client_id="+CLIENT_ID+"&response_type=ACCESS_TOKEN&token_type=Bearer&expires_in=3600")
+    #What we need to do is go and upload photo and get the shared url which 
+
+    client = ImgurClient(client_id=CLIENT_ID, client_secret=CLIENT_SECRET)
+    authorizationUrl =  client.get_auth_url('pin')
+    webbrowser.open(authorizationUrl)
+
+    code = input("Enter Authorization Code: ")
+    creds = client.authorize(code, 'pin')
+    print(creds)
+    client.set_user_auth(creds['access_token'], creds['refresh_token'])
+
+    for i in os.listdir("./inputNotes"):
+        if i[0] != '.':
+            res = client.upload_from_path("./inputNotes/"+i, anon=False)
+            print(res)
+            #delRes = client.delete_image(res['id'])
+
 #main()
 #getQA()
 #contours()
-notionTest()
+#notionTest()
+imgurTest()
