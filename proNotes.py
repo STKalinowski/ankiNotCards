@@ -50,7 +50,6 @@ def getAvgY(contour):
     return int(ySum/len(contour)) 
 
 def main():
-    print(DECK_NUM)
     #Filter image and get main contours
     imgFileList = os.listdir(INPUT_DIR)
     if len(imgFileList) == 0:
@@ -74,16 +73,64 @@ def main():
                 'afmt': '{{FrontSide}} <hr id="answer"> {{Answer}} <hr id="Link"> {{Link}}'
             },
         ])
-    
-    #Go through 
-    for i in imgFileList:
-        if i[0] == '.':
+    #Imgur Setup
+    client = ImgurClient(client_id=CLIENT_ID, client_secret=CLIENT_SECRET)
+    authorizationUrl = client.get_auth_url('pin')
+    webbrowser.open(authorizationUrl)
+    code = input("Enter Authorization Code: ")
+    creds = client.authorize(code, 'pin')
+    client.set_user_auth(creds['access_token'], creds['refresh_token'])
+
+    #Notion Setup
+    notionApiURL = "https://api.notion.com/v1/pages"
+    notionHeader = {
+        "Notion-Version":"2022-06-28",
+        "Authorization": "Bearer "+NOTIONKEY,
+    }
+    notionPage = {
+        "parent":{ "database_id":DBID, },
+        "properties":{
+            "Name":{ "title":[ 
+                { "text":{ "content":"" } }
+                ]
+            },
+            "Tags":{ 
+                "multi_select": [{"name": "IPAD"}]
+            },
+        },
+        "children":[
+            {
+                "type":"image",
+                "image":{"type":"external",
+                        "external":{"url":""}}
+            }
+        ]
+    }
+
+    #Go through Notes
+    for filename in imgFileList:
+        #Filter out any hidden unwanted files!
+        if filename[0] == '.':
             continue
-        img = cv2.imread(INPUT_DIR + '/' + i)
+        print("Working on " + filename)
+        img = cv2.imread(INPUT_DIR + '/' + filename)
         
         imgMH = len(img)
         imgMW = len(img[0]) 
-        title = i[0:-4]
+        title = filename[0:-4]
+
+        #Upload image and make notion page
+        imgurResp = client.upload_from_path(INPUT_DIR+'/'+filename, anon=False)
+        imgLink = imgurResp["link"]
+        notionPage["properties"]["Name"]["title"][0]["text"]["content"]=title
+        notionPage["children"][0]["image"]["external"]["url"]=imgLink
+        resp = requests.post(notionApiURL, headers=notionHeader, json=notionPage)
+        if resp.status_code != 200:
+            print(resp)
+            print(resp.content)
+            raise Exception("Trouble making Notion page for file: " + i)
+        respJson = json.loads(resp.content.decode('utf8'))
+        pageLink = respJson["url"]
 
         #We use color for markers!!!
         imgHSV = cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
@@ -98,7 +145,6 @@ def main():
         contoursAvgPair.sort(key=lambda x: x[0])
         contours = list(map(lambda x: x[1], contoursAvgPair))
 
-        pageLink = "https://www.youtube.com"
         imgList = []
         #With Q: A: crops
         for i in range(0,len(contours),3):
@@ -126,168 +172,10 @@ def main():
             #myNote = genanki.Note(myMode, ['<img src=''>', '',])
             myNote = genanki.Note(myModel, fields=['<img src='+qCardNum+'>', '<img src='+aCardNum+'>', '<a href='+pageLink+'>Page Context Link</a>'])
             myDeck.add_note(myNote)
+        print("Finished with " + filename)
+    print("Generating Deck Package!")
     myPackage = genanki.Package(myDeck)
     myPackage.media_files = imgList
     myPackage.write_to_file('./output.apkg')
 
-
-def contours():
-    imgFileList = os.listdir(INPUT_DIR)
-    img = cv2.imread(INPUT_DIR + '/' + imgFileList[0])
-    print("TITLE " + imgFileList[0][0:-4])
-    imgHSV = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-
-    mask = cv2.inRange(imgHSV, LOW_YELLOW, UP_YELLOW)
-    result = cv2.bitwise_and(img, img, mask=mask)
-
-    '''
-    cv2.imshow('Initial', img)
-    cv2.imshow('Mask', mask)
-    cv2.imshow('Result', result)
-    cv2.waitKey(0)
-    '''
-
-    resGray = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
-    ret, resGrayThr = cv2.threshold(resGray, 127,255,0)
-
-    cv2.imshow('Results as Grey', resGray)
-
-    contoursSimple, hierarchy = cv2.findContours(resGrayThr, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    contoursNone, hierarchy = cv2.findContours(resGrayThr, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
-
-    print(len(contoursSimple))
-    print(type(contoursSimple))
-    contoursSimple =  map((lambda x : x.reshape(-1,2) ), contoursSimple)
-    contoursNone = list(filter(lambda x: len(x) > 10, contoursNone))
-    contoursNone = map((lambda x : x.reshape(-1,2) if len(x) > 4 else [] ), contoursNone)
-    im1 = result.copy()
-    im2 = result.copy()
-    for i in contoursSimple:
-        print(len(i))
-        for (x, y) in i:
-            cv2.circle(im1, (x, y), 1, (255, 0, 0), 3)
-    print("End1")
-    for i in contoursNone:
-        print(len(i))
-        for (x, y) in i:
-            cv2.circle(im2, (x, y), 1, (255, 0, 0), 3)
-    
-    out = np.hstack([im1, im2])
-    cv2.imshow('Output', out)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-    for i in contoursSimple:
-        print(len(i))
-    print("Hello")
-
-    a = [1,2,3,4,5,6,7,8,9]
-    for l,mid,r in a:
-        print(l)
-        print(mid)
-        print(r)
-
-def getQA():
-    imgFileList = os.listdir(INPUT_DIR)
-    img = cv2.imread(INPUT_DIR + '/' + imgFileList[0])
-
-    imgTxtData = [ x.split('\t') for x in pytesseract.image_to_data(img).splitlines()]  
-    #['level', 'page_num', 'block_num', 'par_num', 'line_num', 'word_num', 'left', 'top', 'width', 'height', 'conf', 'text']
-    # 0         1           2           3           4           5           6       7       8       9       10          11
-    fig, ax = plt.subplots()
-    ax.imshow(img)
-    for row in imgTxtData[1:]:
-        if int(row[3]) == 0:
-            width = int(row[8])
-            height = int(row[9])
-            left = int(row[6])
-            bot = int(row[7])
-            rect = patches.Rectangle((left,bot),width, height, linewidth=2, edgecolor='r', facecolor='none')
-            ax.add_patch(rect)
-    plt.show()
-
-def displayRespJson(resp):
-    print(resp)
-    respJSON = json.loads(resp.content.decode('utf8'))
-    for key in respJSON.keys():
-        print("Key: " + key)
-        print(respJSON[key])
-
-def notionTest():
-    print("Notion test!")
-    apiURL = "https://api.notion.com/v1/pages"
-    header = {
-        "Notion-Version":"2022-06-28",
-        "Authorization": "Bearer "+NOTIONKEY,
-    }
-    msg = {
-        "parent":{ "database_id":DBID, },
-        "properties":{
-            "Name":{ "title":[ 
-                { "text":{ "content":"Test Adding Page Title" } }
-                ]
-            },
-            "Tags":{ 
-                "multi_select": [{"name": "IPAD"}]
-            },
-        },
-        "children":[ {
-                "object":"block",
-                "type":"heading_2",
-                "heading_2":{ "rich_text":[
-                    {"type":"text", 
-                    "text":{"content":"Ipad Text"}
-                    }
-                ]}
-            },
-            { "type": "video",
-                "video": {"type":"external",
-                        "external":{"url":"https://i.imgur.com/a9Squjj.mp4"}}
-            }
-        ]
-    }
-    
-    resp = requests.post(apiURL, headers=header, json=msg)
-    displayRespJson(resp)
-
-    if resp != None:
-        return
-    
-    apiURL = "https://api.notion.com/v1/databases/"+DBID
-    header = {
-        "Notion-Version":"2022-06-28",
-        "Authorization": "Bearer "+NOTIONKEY,
-    }
-    resp = requests.get(apiURL, headers=header)
-    print(resp)
-    print(resp.content)
-    respJson = json.loads(resp.content.decode('utf8'))
-    print(respJson["properties"])
-    for key in respJson["properties"].keys():
-        print("Key: " + key)
-        print(respJson["properties"][key])
-
-def imgurTest():
-    print("Imgur Test")
-    #resp = requests.get("https://api.imgur.com/oauth2/authorize?client_id="+CLIENT_ID+"&response_type=ACCESS_TOKEN&token_type=Bearer&expires_in=3600")
-    #What we need to do is go and upload photo and get the shared url which 
-
-    client = ImgurClient(client_id=CLIENT_ID, client_secret=CLIENT_SECRET)
-    authorizationUrl =  client.get_auth_url('pin')
-    webbrowser.open(authorizationUrl)
-
-    code = input("Enter Authorization Code: ")
-    creds = client.authorize(code, 'pin')
-    print(creds)
-    client.set_user_auth(creds['access_token'], creds['refresh_token'])
-
-    for i in os.listdir("./inputNotes"):
-        if i[0] != '.':
-            res = client.upload_from_path("./inputNotes/"+i, anon=False)
-            print(res)
-            #delRes = client.delete_image(res['id'])
-
-#main()
-#getQA()
-#contours()
-#notionTest()
-imgurTest()
+main()
