@@ -9,10 +9,7 @@ def noteIdGen():
     return None
 
 def main():
-    print("Hello")
     #Import settings from files.
-    #Please fill in your information appropriatly.
-    
     with open("./settings.json") as f:
         entry = json.load(f)
     con = sqlite3.connect(entry[0]['ankiLocation']+'/User 1/collection.anki2')    
