@@ -1,36 +1,23 @@
 import cv2
 import numpy as np
 import os
-from PIL import Image
-import pytesseract
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 import requests
 import json
 import genanki
 import random
 
-from rauth import OAuth2Service
 import webbrowser
 from imgurpython import ImgurClient
 
-#HARD CODED STUFF!!!!
-#WHAT USER SHOULD SET:
-#INPUT_DIR -> Directory to store images
-#ENV VAR: IMGUR_CI -> Imgur client id account, get it from:
-#ENV VAR:
+###PRESET ENVIRONMENTAL VALUES!
+#NOTION -> Account Notion Key for page upload
+#IMGUR_CI -> Imgure Client Id
+#IMGUR_CS -> Imgure Client Secret Key
+#Regester your client here: https://api.imgur.com/oauth2/addclient
+#And then you can get your client id and key
 
 
-
-#Anki Stuff
-#To add sounds or images, set the media_files attribute on your packages
-DECK_NUM = 1661450634135
-MODEL_NUM = 2999898880
-
-#Imgur Stuff
-CLIENT_ID = os.environ.get("IMGUR_CI")
-CLIENT_SECRET = os.environ.get('IMGUR_CS')
-
+#################
 #Function to help with debugging
 def displayContours(img, contours):
     res = cv2.drawContours(img, contours, -1, (0,255,0),3)
