@@ -1,5 +1,5 @@
 # ankiNotCards
-Program to automate my IPAD Notes.
+Program to automate my IPad Notes.
 
 Images of Notes taken on Ipad.
 Put into InputNotes.
